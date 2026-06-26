@@ -20,6 +20,7 @@ class Scanner {
         Scanner(std::vector<ScanList> scanlist);
         double NextCh(bool frq);
         void SetStepDelay(uint16_t delay);
+        const ScanList& GetCurrentChannel() const;
 };
 
 #endif // _SCANNER_H

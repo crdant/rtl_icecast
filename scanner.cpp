@@ -42,3 +42,8 @@ void Scanner::SetStepDelay(uint16_t delay)
 {
     stepDelayMs = delay;
 }
+
+const ScanList& Scanner::GetCurrentChannel() const
+{
+    return channels[ch_index];
+}

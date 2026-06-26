@@ -655,6 +655,12 @@ void icecast_thread_function(shout_t* shout) {
     printf("Icecast streaming thread ending\n");
 }
 
+ModulationMode parse_modulation_mode(const std::string& mode_str) {
+    if (mode_str == "AM") return ModulationMode::AM_MODE;
+    if (mode_str == "NFM") return ModulationMode::NFM_MODE;
+    return ModulationMode::WFM_MODE;
+}
+
 std::string get_mode_text(ModulationMode mode) {
     if (mode == ModulationMode::AM_MODE) return "AM";
     else if (mode == ModulationMode::NFM_MODE) return "NFM";
@@ -1040,6 +1046,12 @@ int main(int argc, char* argv[]) {
         if (g_config.scanEnabled) {
             double frq = scanner->NextCh(squelch_active);
             if (frq != 0) {
+                const ScanList& ch = scanner->GetCurrentChannel();
+                ModulationMode mode = parse_modulation_mode(ch.modulation_mode);
+                if (mode != current_mode) {
+                    init_modulation(mode);
+                }
+                g_demodulator.reset();
                 change_frequency(frq);
             }
         }
