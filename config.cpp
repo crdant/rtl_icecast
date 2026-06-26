@@ -75,6 +75,10 @@ Config parse_config(const std::string &filename) {
     if (ini_data.count("rtl_sdr")) {
         auto& section = ini_data["rtl_sdr"];
         
+        if (section.count("device_index")) {
+            config.device_index = std::stoi(section["device_index"]);
+        }
+
         if (section.count("sample_rate")) {
             config.sample_rate = std::stoi(section["sample_rate"]);
         }

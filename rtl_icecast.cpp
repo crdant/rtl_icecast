@@ -745,6 +745,7 @@ void print_usage() {
     std::cout << "Usage: rtl_icecast [options]\n"
               << "Options:\n"
               << "  -c, --config <file>    Use specified config file (default: config.ini)\n"
+              << "  -d, --device <index>   RTL-SDR device index to use (default: 0)\n"
               << "  -q, --quiet            Operate (mostly) quietly (default: false)\n"
               << "  -h, --help             Show this help message\n"
               << std::endl;
@@ -778,6 +779,7 @@ void set_squelch_threshold(float threshold) {
 
 int main(int argc, char* argv[]) {
     std::string config_file = "config.ini";
+    int device_index_override = -1;
     bool force_narrow = false;
     bool force_squelch = false;
     float squelch_level = -30.0f;
@@ -799,7 +801,14 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Error: Config file path not specified\n";
                 return 1;
             }
-        } 
+        } else if (arg == "-d" || arg == "--device") {
+            if (i + 1 < argc) {
+                device_index_override = std::stoi(argv[++i]);
+            } else {
+                std::cerr << "Error: Device index not specified\n";
+                return 1;
+            }
+        }
     }
 
     // Load configuration
@@ -815,6 +824,9 @@ int main(int argc, char* argv[]) {
         if (force_lowcut) {
             g_config.lowcut_enabled = true;
             g_config.lowcut_freq = lowcut_freq;
+        }
+        if (device_index_override >= 0) {
+            g_config.device_index = device_index_override;
         }
     } catch (const std::exception& e) {
         std::cerr << "Error loading config: " << e.what() << std::endl;
@@ -845,8 +857,9 @@ int main(int argc, char* argv[]) {
     init_lowcut_filter();
     
     // Initialize RTL-SDR
-    if (rtlsdr_open(&g_dev, 0) < 0) {
-        std::cerr << "Failed to open RTL-SDR device\n";
+    printf("Opening RTL-SDR device index %d\n", g_config.device_index);
+    if (rtlsdr_open(&g_dev, g_config.device_index) < 0) {
+        std::cerr << "Failed to open RTL-SDR device " << g_config.device_index << "\n";
         return 1;
     }
     

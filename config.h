@@ -18,6 +18,7 @@ enum class ModulationMode {
 
 struct Config {
     // RTL-SDR settings
+    int device_index;     // RTL-SDR device index (0 = first dongle)
     int sample_rate;
     double center_freq;  // in MHz
     int gain_mode;
@@ -65,6 +66,7 @@ struct Config {
 
     // Constructor with default values
     Config() :
+        device_index(0),
         sample_rate(1024000),
         center_freq(99.9),  // 99.9 MHz
         gain_mode(0),
