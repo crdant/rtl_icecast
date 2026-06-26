@@ -515,18 +515,23 @@ bool reconnect_icecast(shout_t* &shout) {
     
     // Use older API calls for better compatibility
     shout_set_format(shout, SHOUT_FORMAT_MP3);
-    
+
     shout_set_protocol(shout, SHOUT_PROTOCOL_HTTP);
-    
+
     // Set station name using older API call
     shout_set_name(shout, g_config.icecast_station_title.c_str());
-    
+
+    // Set audio info so shout_sync can pace correctly
+    shout_set_audio_info(shout, SHOUT_AI_BITRATE, std::to_string(g_config.mp3_bitrate).c_str());
+    shout_set_audio_info(shout, SHOUT_AI_SAMPLERATE, std::to_string(g_config.audio_rate).c_str());
+    shout_set_audio_info(shout, SHOUT_AI_CHANNELS, "1");
+
     // Use blocking mode for initial connection
     shout_set_nonblocking(shout, 0);
-    
-    printf("Connecting to Icecast server %s:%d%s...\n", 
+
+    printf("Connecting to Icecast server %s:%d%s...\n",
            g_config.icecast_host.c_str(), g_config.icecast_port, g_config.icecast_mount.c_str());
-    
+
     int err = shout_open(shout);
     if (err == SHOUTERR_SUCCESS) {
         std::cout << "Successfully connected to Icecast\n";
@@ -627,14 +632,30 @@ void icecast_thread_function(shout_t* shout) {
             }
             
             // Send data
+            auto send_start = std::chrono::steady_clock::now();
             last_packet_size.store(0);
             int ret = shout_send(shout, chunk.data.data(), chunk.size);
             last_packet_size.store(chunk.size);
-            
+
             if (ret == SHOUTERR_SUCCESS) {
                 consecutive_errors = 0;
-                // Wait until it's time to send the next chunk
-                shout_sync(shout);
+                // Pace based on actual audio duration, with feedback from queue
+                // depth to correct for OS jitter, RTL-SDR clock drift, and
+                // network latency. Target: keep ~2 chunks in the queue.
+                auto chunk_duration_ms = CHUNK_SIZE * 1000 / g_config.audio_rate;
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - send_start).count();
+                size_t queue_depth;
+                {
+                    std::lock_guard<std::mutex> lock(mp3_buffer_mutex);
+                    queue_depth = mp3_queue.size();
+                }
+                // Each chunk above target: sleep 20ms less; each below: 20ms more
+                long adjustment_ms = ((long)queue_depth - 2) * 20;
+                long sleep_ms = (long)chunk_duration_ms - (long)elapsed - adjustment_ms;
+                if (sleep_ms > 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+                }
             } else {
                 std::cerr << "Icecast error: " << shout_get_error(shout) << std::endl;
                 icecast_connected = false;
@@ -719,18 +740,6 @@ void print_status() {
         connectionStatus = "Disconnected";
     }
 
-    static int disconnectedCounter=0;
-    if (packet > 0) {
-        disconnectedCounter=0;
-    } else {
-        disconnectedCounter++;
-    }
-
-    if (disconnectedCounter > 2) 
-    {        
-        icecast_connected = false;
-    }
-    
     // Add queue status
     std::string queueStatus = std::to_string(queue_size) + "/" + std::to_string(MAX_MP3_QUEUE_SIZE);
 
@@ -766,7 +775,9 @@ void change_frequency(double new_freq_mhz) {
         std::cerr << "Failed to set frequency to " << new_freq_mhz << " MHz\n";
     } else {
         g_config.center_freq = new_freq_mhz;
-        std::cout << "Tuned to " << new_freq_mhz << " MHz\n";
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        printf("Tuned to %.3f MHz at t=%lldms\n", new_freq_mhz, (long long)ms);
     }
 }
 
@@ -846,6 +857,7 @@ int main(int argc, char* argv[]) {
 
     scanner = new Scanner(g_config.scanlist);
     scanner->SetStepDelay(g_config.step_delay_ms);
+    printf("Scanner step delay: %d ms\n", g_config.step_delay_ms);
 
     // Initialize squelch state
     last_signal_above_threshold = std::chrono::steady_clock::now();
@@ -939,16 +951,21 @@ int main(int argc, char* argv[]) {
     
     // Use older API calls for better compatibility
     shout_set_format(shout, SHOUT_FORMAT_MP3);
-    
+
     shout_set_protocol(shout, SHOUT_PROTOCOL_HTTP);
-    
+
     // Set station name using older API call
     shout_set_name(shout, g_config.icecast_station_title.c_str());
-    
+
+    // Set audio info so shout_sync can pace correctly
+    shout_set_audio_info(shout, SHOUT_AI_BITRATE, std::to_string(g_config.mp3_bitrate).c_str());
+    shout_set_audio_info(shout, SHOUT_AI_SAMPLERATE, std::to_string(g_config.audio_rate).c_str());
+    shout_set_audio_info(shout, SHOUT_AI_CHANNELS, "1");
+
     // Use blocking mode for initial connection
     shout_set_nonblocking(shout, 0);
-    
-    printf("Connecting to Icecast server %s:%d%s...\n", 
+
+    printf("Connecting to Icecast server %s:%d%s...\n",
            g_config.icecast_host.c_str(), g_config.icecast_port, g_config.icecast_mount.c_str());
     
     int err = shout_open(shout);
